@@ -462,6 +462,12 @@ event_to_event_callback(struct event *ev)
 	return &ev->ev_evcallback;
 }
 
+
+/*
+ *	初始化一个Reactor实例
+ *	操作的全局变量：
+ *	current_base、event_global_current_base_	全局Reactor实例
+ */
 struct event_base *
 event_init(void)
 {
@@ -562,6 +568,9 @@ event_disable_debug_mode(void)
 #endif
 }
 
+/*
+ *	创建和初始化event_base
+ */
 struct event_base *
 event_base_new_with_config(const struct event_config *cfg)
 {
@@ -1364,7 +1373,7 @@ event_signal_closure(struct event_base *base, struct event *ev)
 /** Return true iff if 'tv' is a common timeout in 'base' */
 static inline int
 is_common_timeout(const struct timeval *tv,
-    const struct event_base *base)
+    			  const struct event_base *base)
 {
 	int idx;
 	if ((tv->tv_usec & COMMON_TIMEOUT_MASK) != COMMON_TIMEOUT_MAGIC)
@@ -1767,6 +1776,9 @@ event_dispatch(void)
 	return (event_loop(0));
 }
 
+/*
+ * 开始事件循环，等待就绪事件并执行事件处理
+ */
 int
 event_base_dispatch(struct event_base *event_base)
 {
@@ -1875,6 +1887,11 @@ event_loop(int flags)
 	return event_base_loop(current_base, flags);
 }
 
+/*
+ *	开始事件循环
+ 	操作的全局变量：
+	
+ */
 int
 event_base_loop(struct event_base *base, int flags)
 {
@@ -2062,6 +2079,11 @@ event_base_once(struct event_base *base, evutil_socket_t fd, short events,
 	return (0);
 }
 
+/*
+ *	初始化事件event
+ 	操作的全局变量：
+	
+ */
 int
 event_assign(struct event *ev, struct event_base *base, evutil_socket_t fd, short events, void (*callback)(evutil_socket_t, short, void *), void *arg)
 {
@@ -2083,6 +2105,7 @@ event_assign(struct event *ev, struct event_base *base, evutil_socket_t fd, shor
 	ev->ev_ncalls = 0;
 	ev->ev_pncalls = NULL;
 
+	//如果是信号事件，信号事件和I/O事件不兼容
 	if (events & EV_SIGNAL) {
 		if ((events & (EV_READ|EV_WRITE|EV_CLOSED)) != 0) {
 			event_warnx("%s: EV_SIGNAL is not compatible with "
@@ -2111,6 +2134,10 @@ event_assign(struct event *ev, struct event_base *base, evutil_socket_t fd, shor
 	return 0;
 }
 
+/*
+ *	设置event从属的event_base
+ *	指明event要注册到哪个event_base实例上
+ */
 int
 event_base_set(struct event_base *base, struct event *ev)
 {
@@ -2126,6 +2153,16 @@ event_base_set(struct event_base *base, struct event *ev)
 	return (0);
 }
 
+/*
+ *	初始化事件event，设置回调函数和关注的事件
+    ev 执行要初始化的event对象
+	fd 该event绑定的文件描述符，对于信号事件，则为关注的信号
+	events 在该fd上关注的事件类型
+	cb 回调函数指针
+
+ *	操作的全局变量：
+ *	current_base 全局的Reactor实例
+ */
 void
 event_set(struct event *ev, evutil_socket_t fd, short events,
 	  void (*callback)(evutil_socket_t, short, void *), void *arg)
@@ -2155,6 +2192,9 @@ event_base_get_running_event(struct event_base *base)
 	return ev;
 }
 
+/*
+ *	创建通用事件处理器
+ */
 struct event *
 event_new(struct event_base *base, evutil_socket_t fd, short events, void (*cb)(evutil_socket_t, short, void *), void *arg)
 {
@@ -2431,6 +2471,9 @@ event_get_priority(const struct event *ev)
 	return ev->ev_pri;
 }
 
+/*
+ *	添加事件到Reactor实例
+ */
 int
 event_add(struct event *ev, const struct timeval *tv)
 {
@@ -2545,40 +2588,26 @@ event_remove_timer(struct event *ev)
  * we treat tv as an absolute time, not as an interval to add to the current
  * time */
 int
-event_add_nolock_(struct event *ev, const struct timeval *tv,
-    int tv_is_absolute)
+event_add_nolock_(struct event *ev, const struct timeval *tv, int tv_is_absolute)
 {
 	struct event_base *base = ev->ev_base;
 	int res = 0;
 	int notify = 0;
 
 	EVENT_BASE_ASSERT_LOCKED(base);
-	event_debug_assert_is_setup_(ev);
-
-	event_debug((
-		 "event_add: event: %p (fd "EV_SOCK_FMT"), %s%s%s%scall %p",
-		 ev,
-		 EV_SOCK_ARG(ev->ev_fd),
-		 ev->ev_events & EV_READ ? "EV_READ " : " ",
-		 ev->ev_events & EV_WRITE ? "EV_WRITE " : " ",
-		 ev->ev_events & EV_CLOSED ? "EV_CLOSED " : " ",
-		 tv ? "EV_TIMEOUT " : " ",
-		 ev->ev_callback));
 
 	EVUTIL_ASSERT(!(ev->ev_flags & ~EVLIST_ALL));
 
 	if (ev->ev_flags & EVLIST_FINALIZING) {
-		/* XXXX debug */
 		return (-1);
 	}
 
 	/*
-	 * prepare for timeout insertion further below, if we get a
-	 * failure on any step, we should not change any state.
+	 * 如果新添加的事件处理器是定时器，且它尚未被添加到通用定时器队列或时间堆中，
+	   则为该定时器在时间堆上预留一个位置
 	 */
 	if (tv != NULL && !(ev->ev_flags & EVLIST_TIMEOUT)) {
-		if (min_heap_reserve_(&base->timeheap,
-			1 + min_heap_size_(&base->timeheap)) == -1)
+		if (min_heap_reserve_(&base->timeheap, 1 + min_heap_size_(&base->timeheap)) == -1)
 			return (-1);  /* ENOMEM == errno */
 	}
 
@@ -2598,10 +2627,13 @@ event_add_nolock_(struct event *ev, const struct timeval *tv,
 	if ((ev->ev_events & (EV_READ|EV_WRITE|EV_CLOSED|EV_SIGNAL)) &&
 	    !(ev->ev_flags & (EVLIST_INSERTED|EVLIST_ACTIVE|EVLIST_ACTIVE_LATER))) {
 		if (ev->ev_events & (EV_READ|EV_WRITE|EV_CLOSED))
+			//添加I/O事件和I/O事件处理器的映射关系
 			res = evmap_io_add_(base, ev->ev_fd, ev);
 		else if (ev->ev_events & EV_SIGNAL)
+			//添加信号事件和信号事件处理器的映射关系
 			res = evmap_signal_add_(base, (int)ev->ev_fd, ev);
 		if (res != -1)
+			//将事件处理器插入注册事件队列
 			event_queue_insert_inserted(base, ev);
 		if (res == 1) {
 			/* evmap says we need to notify the main thread. */

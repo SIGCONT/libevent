@@ -107,7 +107,11 @@ struct event;
 struct event_callback {
 	TAILQ_ENTRY(event_callback) evcb_active_next;
 	short evcb_flags;
-	ev_uint8_t evcb_pri;	/* smaller numbers are higher priority */
+
+	//事件处理器的优先级，值越小优先级越高
+	ev_uint8_t evcb_pri;	
+
+	//指定Reactor执行回调函数时的行为
 	ev_uint8_t evcb_closure;
 	/* allows us to adopt for different types of events */
         union {
@@ -128,28 +132,41 @@ struct event {
 		TAILQ_ENTRY(event) ev_next_with_common_timeout;
 		int min_heap_idx;
 	} ev_timeout_pos;
+
+	//对于I/O事件，是绑定的文件描述符；对于signal事件，是绑定的信号
 	evutil_socket_t ev_fd;
 
+	//该事件所属的Reactor实例
 	struct event_base *ev_base;
 
 	union {
-		/* used for io events */
+		//所有具有相同文件描述符值的I/O事件处理器串联成一个尾队列
 		struct {
 			LIST_ENTRY (event) ev_io_next;
 			struct timeval ev_timeout;
 		} ev_io;
 
-		/* used by signal events */
+		//所有具有相同信号值的信号事件处理器串联成一个尾队列
 		struct {
 			LIST_ENTRY (event) ev_signal_next;
+			//指定信号事件发生时，Reactor需要执行回调函数的次数
 			short ev_ncalls;
-			/* Allows deletes in callback */
+			//要么为NULL，要么是前一个成员的指针
 			short *ev_pncalls;
 		} ev_signal;
 	} ev_;
 
+	/*
+	 *	event关注的事件类型
+	 	I/O事件 EV_WRITE EV_READ
+		定时事件 EV_TIMEOUT
+		信号 EV_SIGNAL
+		辅助选项 EV_PERSIST，表明是一个永久事件
+	 */
 	short ev_events;
-	short ev_res;		/* result passed to event callback */
+
+	//记录当前激活事件的类型
+	short ev_res;
 	struct timeval ev_timeout;
 };
 

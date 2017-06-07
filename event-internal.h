@@ -65,11 +65,14 @@ extern "C" {
 
     @{
  */
-/** A regular event. Uses the evcb_callback callback */
+
+//默认行为
 #define EV_CLOSURE_EVENT 0
-/** A signal event. Uses the evcb_callback callback */
+
+//执行信号事件处理器的回调函数时，调用ev_ncalls次该回调函数
 #define EV_CLOSURE_EVENT_SIGNAL 1
-/** A persistent non-signal event. Uses the evcb_callback callback */
+
+//执行回调函数后，再次将事件处理器加入注册事件队列中
 #define EV_CLOSURE_EVENT_PERSIST 2
 /** A simple callback. Uses the evcb_selfcb callback. */
 #define EV_CLOSURE_CB_SELF 3
